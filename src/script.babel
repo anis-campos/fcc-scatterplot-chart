@@ -1,0 +1,180 @@
+const dataUrl = "https://raw.githubusercontent.com/freeCodeCamp/ProjectReferenceData/master/cyclist-data.json";
+document.addEventListener("DOMContentLoaded", function () {
+    const req = new XMLHttpRequest();
+    req.open('GET', dataUrl, true);
+    req.onreadystatechange = function () {
+        let json;
+        if (req.readyState === 4 && req.status === 200) {
+            json = JSON.parse(req.responseText);
+            setData(json)
+        }
+    };
+    req.send();
+});
+
+const h = 630, w = 920, padding = 50;
+d3.select('#holder')
+    .append('svg')
+    .attr('width', w)
+    .attr('height', h);
+
+/**
+ * Api object from FCC
+ * @typedef {Object} ApiModel
+ * @property {String} Time        - Time (minutes) to finish the race
+ * @property {Number} Place       - Race final position
+ * @property {Number} Seconds     - Time (seconds) to finish the race
+ * @property {String} Name        - Cyclist name
+ * @property {Number} Year        - Competition year
+ * @property {String} Nationality - Cyclist nationality
+ * @property {String} Doping      - Doping accusation
+ * @property {String} URL         - Link to doping article
+ */
+
+/***
+ *
+ * @param {[ApiModel]} dataset
+ */
+function setData(dataset) {
+
+
+    const maxX = d3.max(dataset, x => x.Year),
+        minX = d3.min(dataset, x => x.Year),
+        xDomain = [new Date(minX - 1, 1), new Date(maxX, 12)];
+
+    const maxY = d3.max(dataset, x => x.Seconds),
+        minY = d3.min(dataset, x => x.Seconds),
+        yDomain = [maxY, minY];
+
+    const xScale = d3.scaleTime()
+        .domain(xDomain)
+        .range([padding, w - padding]);
+
+
+    const yScale = d3.scaleLinear()
+        .domain(yDomain)
+        .range([h - padding, padding]);
+
+    const secondsToDate = (s) => {
+        const sec = s % 60;
+        const seconds = sec < 10 ? '0' + sec : sec;
+        const minutes = parseInt(s / 60);
+        return `${minutes}:${seconds}`
+    };
+    const xAxis = d3.axisBottom(xScale)
+            .tickArguments([d3.timeYear.every(2)]),
+        yAxis = d3.axisLeft(yScale)
+            .tickFormat(secondsToDate);
+
+    const svg = d3.select('svg');
+    svg.append("g")
+        .attr('id', 'x-axis')
+        .attr("transform", `translate(0,${h - padding})`)
+        .call(xAxis);
+
+    svg.append("g")
+        .attr('id', 'y-axis')
+        .attr("transform", `translate(${padding},0)`)
+        .call(yAxis);
+
+    svg.append('g')
+        .attr('id', 'legend')
+        .attr('class', 'legend')
+        .attr("transform", `translate(0,${h - padding - 350})`)
+        .call((el) => {
+            el.append('text')
+                .text("Riders with doping allegations")
+                .attr("x", w - padding - 75)
+                .attr("y", 23)
+                .style('text-anchor', 'end');
+            el.append('rect')
+                .attr('height', 18)
+                .attr('width', 18)
+                .attr("x", w - padding - 70)
+                .attr('y', 9)
+                .style('fill', 'rgb(31, 119, 180)');
+            el.append('text')
+                .attr("x", w - padding - 75)
+                .attr('y', 50)
+                .text("No doping allegations")
+                .style('text-anchor', 'end');
+            el.append('rect')
+                .attr('height', 18)
+                .attr('width', 18)
+                .attr("x", w - padding - 70)
+                .attr('y', 36)
+                .style('fill', 'rgb(255, 127, 14)');
+
+        });
+
+    const data = {tooltip: d3.select('#tooltip'), xScale, yScale};
+
+    svg.selectAll('circle')
+        .data(dataset)
+        .enter()
+        .append('circle')
+        .attr('data-xvalue', d => d.Year)
+        .attr('data-yvalue', d => new Date(d.Seconds * 1000).toUTCString())
+        .attr('class', d => "dot" + (d.Doping ? " doping" : ""))
+        .attr('r', 8)
+        .attr('cx', d => xScale(new Date(d.Year, 1)))
+        .attr('cy', d => yScale(d.Seconds))
+        .on('mouseover', wrap(handleMouseOver, data))
+        .on('mouseout', wrap(handleMouseOut, data));
+}
+
+/**
+ *
+ * @param {function} fn - function to wrap
+ * @param {Object} data - data to pass as first arg
+ * @return {Function}
+ */
+function wrap(fn, data) {
+    return function () {
+        fn.bind(this)(data, ...arguments)
+    }
+}
+
+
+/**
+ *
+ * @param {ApiModel} apiModel
+ * @return {string}
+ */
+function toolTipHtml(apiModel) {
+    const dopping = apiModel.Doping ? " <BR/> <BR/>" + apiModel.Doping : "";
+    return `
+    ${apiModel.Name} : ${apiModel.Nationality} <BR/>
+    Year: ${apiModel.Year}, Time: ${apiModel.Time}
+    ${dopping}
+    `;
+}
+
+/**
+ *
+ * @param {ApiModel} d
+ */
+function handleMouseOver(args, d) {
+    const dot = d3.select(this);
+    const {tooltip} = args;
+    const {pageX: x, pageY: y} = d3.event;
+    tooltip.style("display", "block");
+    tooltip.style("left", x + 20 + "px");
+    tooltip.html(toolTipHtml(d));
+    const height = tooltip.node().getBoundingClientRect().height;
+    tooltip.style("top", y - parseInt(height / 2) + "px");
+    tooltip.attr('data-year', d.Year);
+
+
+    dot.transition().duration(100).attr('r', 10);
+
+}
+
+function handleMouseOut(args) {
+    const {tooltip} = args;
+    tooltip.style("display", "none");
+
+    const dot = d3.select(this);
+    dot.transition().duration(100).attr('r', 8);
+
+}
